@@ -28,6 +28,7 @@ class SubprocessBackend(SpawnBackend):
         env: dict[str, str] | None = None,
         cwd: str | None = None,
         skip_permissions: bool = False,
+        openclaw_agent: str | None = None,
     ) -> str:
         spawn_env = os.environ.copy()
         clawteam_bin = resolve_clawteam_executable()
@@ -51,6 +52,8 @@ class SubprocessBackend(SpawnBackend):
             spawn_env["CLAWTEAM_WORKSPACE_DIR"] = cwd
         if env:
             spawn_env.update(env)
+        if openclaw_agent:
+            spawn_env["CLAWTEAM_OPENCLAW_AGENT"] = openclaw_agent
         spawn_env["PATH"] = build_spawn_path(spawn_env.get("PATH"))
         if os.path.isabs(clawteam_bin):
             spawn_env.setdefault("CLAWTEAM_BIN", clawteam_bin)
@@ -72,17 +75,21 @@ class SubprocessBackend(SpawnBackend):
                 final_command.extend(["-w", cwd])
             if prompt:
                 final_command.extend(["-m", prompt])
+        elif _is_openclaw_command(normalized_command):
+            # Use `tui --session agent:<id>:<key>` to establish a uniquely-named session.
+            # `openclaw agent --session-id` is a UUID lookup, NOT a key setter — all agents
+            # collapse to the default key causing lane collisions.
+            # `agent:<id>:<name>` in --session also routes to the correct agent.
+            base_session = f"clawteam-{team_name}-{agent_name}"
+            session_key = f"agent:{openclaw_agent}:{base_session}" if openclaw_agent else base_session
+            base_cmd = final_command[0]
+            final_command = [base_cmd, "tui", "--session", session_key]
+            if prompt:
+                final_command.extend(["--message", prompt])
         elif prompt:
             if _is_codex_command(normalized_command):
                 # Codex accepts prompt as positional argument
                 final_command.append(prompt)
-            elif _is_openclaw_command(normalized_command):
-                # OpenClaw agent mode: use --message for the prompt
-                if "agent" not in final_command and "tui" not in final_command:
-                    final_command.insert(1, "agent")
-                # Isolate each agent in its own session
-                session_key = f"clawteam-{team_name}-{agent_name}"
-                final_command.extend(["--session-id", session_key, "--message", prompt])
             else:
                 final_command.extend(["-p", prompt])
 
@@ -112,7 +119,8 @@ class SubprocessBackend(SpawnBackend):
             agent_name=agent_name,
             backend="subprocess",
             pid=process.pid,
-            command=list(normalized_command),
+            command=list(final_command),
+            openclaw_agent=openclaw_agent or "",
         )
 
         return f"Agent '{agent_name}' spawned as subprocess (pid={process.pid})"

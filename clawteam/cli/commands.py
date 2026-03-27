@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 import uuid
@@ -78,6 +79,113 @@ def _output(data: dict | list, human_fn=None):
         human_fn(data)
     else:
         print(json.dumps(data, indent=2, ensure_ascii=False))
+
+
+def _load_agent_map(agent_map_file: str | None = None) -> tuple[dict, str | None]:
+    """Load optional agent-map JSON used to route ClawTeam roles -> OpenClaw agents."""
+    candidates: list[Path] = []
+    if agent_map_file:
+        candidates.append(Path(agent_map_file).expanduser())
+    env_map = os.environ.get("CLAWTEAM_AGENT_MAP_FILE")
+    if env_map:
+        candidates.append(Path(env_map).expanduser())
+
+    candidates.extend([
+        Path.home() / ".clawteam" / "agent_map.json",
+        Path.home() / ".clawteam" / "agent-map.json",
+        Path.home() / ".clawteam" / "config" / "agent_map.json",
+    ])
+
+    seen: set[Path] = set()
+    for path in candidates:
+        if path in seen:
+            continue
+        seen.add(path)
+        if not path.is_file():
+            continue
+        try:
+            payload = json.loads(path.read_text())
+            if isinstance(payload, dict):
+                return payload, str(path)
+        except Exception:
+            continue
+
+    return {}, None
+
+
+def _resolve_openclaw_agent(
+    agent_name: str,
+    agent_type: str,
+    explicit_agent: str | None = None,
+    template_name: str | None = None,
+    agent_map: dict | None = None,
+) -> str | None:
+    """Resolve OpenClaw agent id using explicit value, then map lookups."""
+    if explicit_agent:
+        return explicit_agent
+
+    if not isinstance(agent_map, dict) or not agent_map:
+        return None
+
+    def _lookup(block: dict | None) -> str | None:
+        if not isinstance(block, dict):
+            return None
+
+        name_maps = [
+            block.get("by_name"),
+            block.get("byName"),
+            block.get("names"),
+            block.get("agentsByName"),
+        ]
+        for m in name_maps:
+            if isinstance(m, dict):
+                value = m.get(agent_name)
+                if isinstance(value, str) and value:
+                    return value
+
+        type_maps = [
+            block.get("by_type"),
+            block.get("byType"),
+            block.get("types"),
+            block.get("roles"),
+            block.get("by_role"),
+            block.get("byRole"),
+            block.get("agentsByType"),
+        ]
+        for m in type_maps:
+            if isinstance(m, dict):
+                value = m.get(agent_type)
+                if isinstance(value, str) and value:
+                    return value
+
+        # Flat-map compatibility: {"content-lead": "q-platform"}
+        for key in (agent_name, agent_type):
+            value = block.get(key)
+            if isinstance(value, str) and value:
+                return value
+
+        return None
+
+    templates_block = agent_map.get("templates")
+    if isinstance(templates_block, dict) and template_name:
+        tmpl_block = templates_block.get(template_name)
+        resolved = _lookup(tmpl_block)
+        if resolved:
+            return resolved
+        if isinstance(tmpl_block, dict):
+            default_value = tmpl_block.get("default")
+            if isinstance(default_value, str) and default_value:
+                return default_value
+
+    resolved = _lookup(agent_map)
+    if resolved:
+        return resolved
+
+    default_value = agent_map.get("default") or agent_map.get("fallback")
+    if isinstance(default_value, str) and default_value:
+        return default_value
+
+    return None
 
 
 # ============================================================================
@@ -1659,6 +1767,8 @@ def spawn_agent(
     repo: Optional[str] = typer.Option(None, "--repo", help="Git repo path (default: cwd)"),
     skip_permissions: Optional[bool] = typer.Option(None, "--skip-permissions/--no-skip-permissions", help="Skip tool approval for claude (default: from config, true)"),
     resume: bool = typer.Option(False, "--resume", "-r", help="Resume previous session if available"),
+    openclaw_agent: Optional[str] = typer.Option(None, "--openclaw-agent", help="OpenClaw agent id override (e.g. q-research)"),
+    agent_map_file: Optional[str] = typer.Option(None, "--agent-map-file", help="Path to agent-map JSON"),
 ):
     """Spawn a new agent process with identity + task as its initial prompt.
 
@@ -1677,6 +1787,15 @@ def spawn_agent(
     _team = team or "default"
     _name = agent_name or f"agent-{uuid.uuid4().hex[:6]}"
     _id = uuid.uuid4().hex[:12]
+
+    loaded_map, _map_path = _load_agent_map(agent_map_file)
+    resolved_openclaw_agent = _resolve_openclaw_agent(
+        agent_name=_name,
+        agent_type=agent_type,
+        explicit_agent=openclaw_agent,
+        template_name=None,
+        agent_map=loaded_map,
+    )
 
     # Resolve skip_permissions from config
     if skip_permissions is None:
@@ -1775,6 +1894,7 @@ def spawn_agent(
         prompt=prompt,
         cwd=cwd,
         skip_permissions=skip_permissions,
+        openclaw_agent=resolved_openclaw_agent,
     )
 
     if result.startswith("Error"):
@@ -1789,8 +1909,19 @@ def spawn_agent(
         raise typer.Exit(1)
 
     _output(
-        {"status": "spawned", "backend": backend, "agentName": _name, "agentId": _id, "message": result},
-        lambda d: console.print(f"[green]OK[/green] {d['message']}"),
+        {
+            "status": "spawned",
+            "backend": backend,
+            "agentName": _name,
+            "agentId": _id,
+            "openclawAgent": resolved_openclaw_agent,
+            "agentMapFile": _map_path,
+            "message": result,
+        },
+        lambda d: console.print(
+            f"[green]OK[/green] {d['message']}"
+            + (f" [dim](openclaw-agent={d['openclawAgent']})[/dim]" if d.get("openclawAgent") else "")
+        ),
     )
 
 
@@ -2196,6 +2327,18 @@ def launch_team(
     workspace: bool = typer.Option(False, "--workspace/--no-workspace", "-w"),
     repo: Optional[str] = typer.Option(None, "--repo", help="Git repo path"),
     command_override: Optional[list[str]] = typer.Option(None, "--command", help="Override agent command"),
+    agent_map_file: Optional[str] = typer.Option(None, "--agent-map-file", help="Path to agent-map JSON"),
+    spawn_all: bool = typer.Option(
+        False,
+        "--spawn-all",
+        help=(
+            "Spawn all template agents immediately via the backend. "
+            "Default (off): only the leader is spawned; the leader is expected to "
+            "spawn members via sessions_spawn as work progresses. Use --spawn-all "
+            "for non-OpenClaw backends (claude, codex) or when all members should "
+            "start simultaneously."
+        ),
+    ),
 ):
     """Launch a full agent team from a template with one command."""
     import os as _os
@@ -2217,6 +2360,7 @@ def launch_team(
     t_name = team_name or f"{tmpl.name}-{uuid.uuid4().hex[:6]}"
     be_name = backend or tmpl.backend
     cmd = command_override or tmpl.command
+    loaded_map, map_path = _load_agent_map(agent_map_file)
 
     # 3. Create team
     leader_id = uuid.uuid4().hex[:12]
@@ -2270,8 +2414,23 @@ def launch_team(
             console.print("[red]Not in a git repository. Use --repo or cd into a repo.[/red]")
             raise typer.Exit(1)
 
-    # 8. Spawn all agents (leader first, then workers)
-    all_agents = [tmpl.leader] + list(tmpl.agents)
+    # 8. Spawn agents — leader always; members only when --spawn-all or non-openclaw backend
+    # Default for OpenClaw backend: leader-only. The leader spawns members via
+    # sessions_spawn as work progresses, giving correct sequential orchestration and
+    # unique per-member session lanes. Use --spawn-all for claude/codex backends or
+    # when all members should start simultaneously.
+    is_openclaw_backend = be_name in ("tmux", "subprocess") and (
+        not cmd or (cmd and cmd[0].endswith("openclaw"))
+    )
+    if spawn_all or not is_openclaw_backend:
+        all_agents = [tmpl.leader] + list(tmpl.agents)
+    else:
+        all_agents = [tmpl.leader]
+        if tmpl.agents:
+            console.print(
+                f"[dim]Leader-only mode: {len(tmpl.agents)} member(s) will be spawned by the leader "
+                f"via sessions_spawn. Use --spawn-all to spawn all members immediately.[/dim]"
+            )
     spawned: list[dict[str, str]] = []
 
     for agent in all_agents:
@@ -2315,6 +2474,14 @@ def launch_team(
         sp_val, _ = get_effective("skip_permissions")
         _skip = str(sp_val).lower() not in ("false", "0", "no", "")
 
+        resolved_openclaw_agent = _resolve_openclaw_agent(
+            agent_name=agent.name,
+            agent_type=agent.type,
+            explicit_agent=agent.openclaw_agent_id,
+            template_name=tmpl.name,
+            agent_map=loaded_map,
+        )
+
         result = be.spawn(
             command=a_cmd,
             agent_name=agent.name,
@@ -2324,8 +2491,17 @@ def launch_team(
             prompt=prompt,
             cwd=cwd,
             skip_permissions=_skip,
+            openclaw_agent=resolved_openclaw_agent,
         )
-        spawned.append({"name": agent.name, "id": a_id, "type": agent.type, "result": result})
+        spawned.append(
+            {
+                "name": agent.name,
+                "id": a_id,
+                "type": agent.type,
+                "openclawAgent": resolved_openclaw_agent,
+                "result": result,
+            }
+        )
 
     # 9. Output summary
     out = {
@@ -2333,7 +2509,16 @@ def launch_team(
         "team": t_name,
         "template": tmpl.name,
         "backend": be_name,
-        "agents": [{"name": s["name"], "id": s["id"], "type": s["type"]} for s in spawned],
+        "agentMapFile": map_path,
+        "agents": [
+            {
+                "name": s["name"],
+                "id": s["id"],
+                "type": s["type"],
+                "openclawAgent": s.get("openclawAgent"),
+            }
+            for s in spawned
+        ],
     }
 
     def _human(_data):
@@ -2341,10 +2526,13 @@ def launch_team(
         table = Table(title="Agents")
         table.add_column("Name", style="cyan")
         table.add_column("Type")
+        table.add_column("OpenClaw Agent")
         table.add_column("ID", style="dim")
         for s in spawned:
-            table.add_row(s["name"], s["type"], s["id"])
+            table.add_row(s["name"], s["type"], s.get("openclawAgent") or "(default)", s["id"])
         console.print(table)
+        if map_path:
+            console.print(f"[dim]Agent map:[/dim] {map_path}")
         console.print()
         if be_name == "tmux":
             console.print(f"[bold]Attach:[/bold] tmux attach -t clawteam-{t_name}")

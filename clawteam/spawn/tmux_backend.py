@@ -35,6 +35,7 @@ class TmuxBackend(SpawnBackend):
         env: dict[str, str] | None = None,
         cwd: str | None = None,
         skip_permissions: bool = False,
+        openclaw_agent: str | None = None,
     ) -> str:
         if not shutil.which("tmux"):
             return "Error: tmux not installed"
@@ -61,6 +62,8 @@ class TmuxBackend(SpawnBackend):
             env_vars["CLAWTEAM_WORKSPACE_DIR"] = cwd
         if env:
             env_vars.update(env)
+        if openclaw_agent:
+            env_vars["CLAWTEAM_OPENCLAW_AGENT"] = openclaw_agent
         env_vars["PATH"] = build_spawn_path(env_vars.get("PATH", os.environ.get("PATH")))
         if os.path.isabs(clawteam_bin):
             env_vars.setdefault("CLAWTEAM_BIN", clawteam_bin)
@@ -81,20 +84,24 @@ class TmuxBackend(SpawnBackend):
             elif _is_codex_command(normalized_command):
                 final_command.append("--dangerously-bypass-approvals-and-sandbox")
 
-        # OpenClaw TUI: pass --message for initial prompt and --session for isolation
+        # OpenClaw: use `tui --session <key>` to establish a uniquely-named session.
+        # IMPORTANT: `openclaw agent --session-id` looks up a session by UUID — it does
+        # NOT set the session key. Passing a string like "clawteam-exec-ops-analyst"
+        # silently fails the lookup and falls back to the agent default key
+        # (agent:<id>:main), causing all members to share one lane and serialize.
+        #
+        # `openclaw tui --session <key>` is the only CLI flag that sets the session key.
+        # To also route to a specific agent, pass the full key as `agent:<id>:<name>`:
+        #   openclaw tui --session agent:quin-platform:clawteam-exec-ops-leader
+        # This sets session key = agent:quin-platform:clawteam-exec-ops-leader AND
+        # routes to the quin-platform agent. See: https://docs.openclaw.ai/cli/tui
         if _is_openclaw_command(normalized_command):
-            session_key = f"clawteam-{team_name}-{agent_name}"
-            if final_command[0].endswith("openclaw") and len(final_command) == 1:
-                final_command = [final_command[0], "tui", "--session", session_key]
-                if prompt:
-                    final_command.extend(["--message", prompt])
-            elif "tui" in final_command:
-                final_command.extend(["--session", session_key])
-                if prompt:
-                    final_command.extend(["--message", prompt])
-            elif "agent" in final_command:
-                if prompt:
-                    final_command.extend(["--message", prompt])
+            base_session = f"clawteam-{team_name}-{agent_name}"
+            session_key = f"agent:{openclaw_agent}:{base_session}" if openclaw_agent else base_session
+            base_cmd = final_command[0]
+            final_command = [base_cmd, "tui", "--session", session_key]
+            if prompt:
+                final_command.extend(["--message", prompt])
 
         if _is_nanobot_command(normalized_command):
             if cwd and not _command_has_workspace_arg(normalized_command):
@@ -146,17 +153,19 @@ class TmuxBackend(SpawnBackend):
             return f"Error: failed to launch tmux session: {(stderr or '').strip()}"
 
         # Detect commands that die before the session becomes observable.
-        time.sleep(0.3)
-        pane_check = subprocess.run(
-            ["tmux", "list-panes", "-t", target, "-F", "#{pane_id}"],
-            capture_output=True,
-            text=True,
-        )
-        if pane_check.returncode != 0 or not pane_check.stdout.strip():
-            return (
-                f"Error: agent command '{normalized_command[0]}' exited immediately after launch. "
-                "Verify the CLI works standalone before using it with clawteam spawn."
+        # OpenClaw one-turn agent commands can exit quickly by design; skip this guard there.
+        if not _is_openclaw_command(normalized_command):
+            time.sleep(0.3)
+            pane_check = subprocess.run(
+                ["tmux", "list-panes", "-t", target, "-F", "#{pane_id}"],
+                capture_output=True,
+                text=True,
             )
+            if pane_check.returncode != 0 or not pane_check.stdout.strip():
+                return (
+                    f"Error: agent command '{normalized_command[0]}' exited immediately after launch. "
+                    "Verify the CLI works standalone before using it with clawteam spawn."
+                )
 
         _confirm_workspace_trust_if_prompted(target, normalized_command)
 
@@ -234,7 +243,8 @@ class TmuxBackend(SpawnBackend):
             backend="tmux",
             tmux_target=target,
             pid=pane_pid,
-            command=list(normalized_command),
+            command=list(final_command),
+            openclaw_agent=openclaw_agent or "",
         )
 
         return f"Agent '{agent_name}' spawned in tmux ({target})"

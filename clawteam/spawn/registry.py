@@ -21,6 +21,7 @@ def register_agent(
     tmux_target: str = "",
     pid: int = 0,
     command: list[str] | None = None,
+    openclaw_agent: str = "",
 ) -> None:
     """Record spawn info for an agent (atomic write)."""
     path = _registry_path(team_name)
@@ -31,6 +32,7 @@ def register_agent(
         "pid": pid,
         "command": command or [],
         "spawned_at": time.time(),
+        "openclaw_agent": openclaw_agent,
     }
     _save(path, registry)
 

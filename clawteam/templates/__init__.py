@@ -26,6 +26,8 @@ class AgentDef(BaseModel):
     type: str = "general-purpose"
     task: str = ""
     command: list[str] | None = None
+    # Optional OpenClaw routing override (agent id from openclaw.json agents.list)
+    openclaw_agent_id: str | None = None
 
 
 class TaskDef(BaseModel):
@@ -57,10 +59,34 @@ _USER_DIR = Path.home() / ".clawteam" / "templates"
 # ---------------------------------------------------------------------------
 
 class _SafeDict(dict):
-    """dict subclass that keeps unknown {placeholders} intact."""
+    """dict subclass that returns a sentinel for unknown keys.
+    The sentinel's __format__ returns the literal {key} (with any spec
+    appended) so that malformed or unknown placeholders pass through intact.
+    """
 
-    def __missing__(self, key: str) -> str:
-        return "{" + key + "}"
+    class _Sentinel:
+        def __init__(self, key: str):
+            self._key = key
+
+        def __str__(self) -> str:
+            return "{" + self._key + "}"
+
+        def __repr__(self) -> str:
+            return "{" + self._key + "}"
+
+        # Python calls this when {unknown-key:spec} is in the template.
+        # Returning the literal placeholder (ignoring spec) is intentional:
+        # we don't want any format specs applied to unknown vars.
+        def __format__(self, spec: str) -> str:
+            return "{" + self._key + "}"
+
+    def __getitem__(self, key: str):
+        if key in dict.keys(self):
+            return super().__getitem__(key)
+        return self._Sentinel(key)
+
+    def __missing__(self, key: str):
+        return self._Sentinel(key)
 
 
 def render_task(task: str, **variables: str) -> str:
