@@ -1065,6 +1065,56 @@ def task_stats(
     _output(stats, _human)
 
 
+@task_app.command("release-stale-locks")
+def task_release_stale_locks(
+    team: str = typer.Argument(..., help="Team name"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be released without making changes"),
+):
+    """Release stale task locks held by dead or unregistered agents.
+
+    Releases locks when the lock holder is confirmed dead (via spawn registry)
+    or when the lock holder is unregistered and the lock is older than
+    CLAWTEAM_STALE_LOCK_TIMEOUT seconds (default: 1800).
+    """
+    from clawteam.team.tasks import TaskStore, STALE_LOCK_TIMEOUT_SECONDS
+    from clawteam.spawn.registry import is_agent_alive
+
+    store = TaskStore(team)
+    tasks = store.list_tasks()
+    stale = []
+    for task in tasks:
+        if not task.locked_by:
+            continue
+        from clawteam.team.tasks import _is_lock_stale
+        alive = is_agent_alive(team, task.locked_by)
+        if alive is False or (alive is None and _is_lock_stale(task.locked_at)):
+            stale.append(task)
+
+    if not stale:
+        console.print("[green]No stale locks found.[/green]")
+        return
+
+    table = Table(title=f"Stale locks in team '{team}'")
+    table.add_column("Task ID", style="cyan")
+    table.add_column("Subject")
+    table.add_column("Locked by", style="yellow")
+    table.add_column("Locked at")
+    table.add_column("Reason")
+    for task in stale:
+        from clawteam.team.tasks import _is_lock_stale
+        alive = is_agent_alive(team, task.locked_by)
+        reason = "dead agent" if alive is False else f"unregistered agent, lock age > {STALE_LOCK_TIMEOUT_SECONDS}s"
+        table.add_row(task.id, task.subject[:50], task.locked_by, task.locked_at[:19], reason)
+    console.print(table)
+
+    if dry_run:
+        console.print(f"[yellow]Dry run — {len(stale)} lock(s) would be released.[/yellow]")
+        return
+
+    released = store.release_stale_locks()
+    console.print(f"[green]Released {len(released)} stale lock(s): {', '.join(released)}[/green]")
+
+
 # ============================================================================
 # Cost Commands
 # ============================================================================

@@ -13,6 +13,26 @@ from typing import Any
 
 from clawteam.team.models import TaskItem, TaskStatus, get_data_dir
 
+# Locks held by unregistered agents (e.g. the generic "agent" string used by external
+# callers) cannot be resolved via the spawn registry.  If such a lock is older than
+# this threshold it is considered stale and will be released automatically.
+STALE_LOCK_TIMEOUT_SECONDS: int = int(
+    os.environ.get("CLAWTEAM_STALE_LOCK_TIMEOUT", 1800)  # 30 minutes default
+)
+
+
+def _is_lock_stale(locked_at: str) -> bool:
+    """Return True if the lock timestamp is older than STALE_LOCK_TIMEOUT_SECONDS."""
+    if not locked_at:
+        return True
+    try:
+        locked_dt = datetime.fromisoformat(locked_at)
+        age = (datetime.now(timezone.utc) - locked_dt).total_seconds()
+        return age >= STALE_LOCK_TIMEOUT_SECONDS
+    except (ValueError, TypeError):
+        # Malformed timestamp — treat as stale so it doesn't block forever
+        return True
+
 
 class TaskLockError(Exception):
     """Raised when a task is locked by another agent."""
@@ -164,19 +184,33 @@ class TaskStore:
             # Check if lock holder is still alive via spawn registry
             from clawteam.spawn.registry import is_agent_alive
             alive = is_agent_alive(self.team_name, task.locked_by)
-            if alive is not False:
-                # Lock holder is alive or unknown — refuse
+            if alive is True:
+                # Lock holder is confirmed alive — refuse
                 raise TaskLockError(
                     f"Task '{task.id}' is locked by '{task.locked_by}' "
                     f"(since {task.locked_at}). Use --force to override."
                 )
-            # Lock holder is dead — release and continue
+            if alive is None and not _is_lock_stale(task.locked_at):
+                # Lock holder is unregistered (e.g. external "agent" string) but the
+                # lock is recent — give it time to complete before overriding.
+                raise TaskLockError(
+                    f"Task '{task.id}' is locked by unregistered agent '{task.locked_by}' "
+                    f"(since {task.locked_at}). Lock is still within timeout window. "
+                    f"Use --force to override."
+                )
+            # Lock holder is dead, or is unregistered with a stale lock — release and continue
 
         task.locked_by = caller or ""
         task.locked_at = _now_iso() if caller else ""
 
     def release_stale_locks(self) -> list[str]:
-        """Scan all tasks and release locks held by dead agents.
+        """Scan all tasks and release locks held by dead or timed-out agents.
+
+        Releases locks when:
+        - The lock holder agent is confirmed dead (via spawn registry), OR
+        - The lock holder is not found in the spawn registry AND the lock is older
+          than STALE_LOCK_TIMEOUT_SECONDS (catches generic "agent" strings and other
+          external callers that are not tracked in the registry).
 
         Returns list of task IDs whose locks were released.
         """
@@ -188,7 +222,10 @@ class TaskStore:
                 if not task.locked_by:
                     continue
                 alive = is_agent_alive(self.team_name, task.locked_by)
-                if alive is False:
+                should_release = alive is False or (
+                    alive is None and _is_lock_stale(task.locked_at)
+                )
+                if should_release:
                     task.locked_by = ""
                     task.locked_at = ""
                     task.updated_at = _now_iso()

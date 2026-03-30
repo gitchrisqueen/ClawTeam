@@ -166,7 +166,11 @@ class TaskWaiter:
 
 
     def _check_dead_agents(self) -> None:
-        """Detect dead agents and mark their in_progress tasks as pending."""
+        """Detect dead agents and mark their in_progress tasks as pending.
+
+        Also releases stale locks held by unregistered agents (e.g. the generic
+        "agent" string used by external callers) that have exceeded the lock timeout.
+        """
         try:
             from clawteam.spawn.registry import list_dead_agents
         except ImportError:
@@ -189,6 +193,15 @@ class TaskWaiter:
 
             if abandoned and self.on_agent_dead:
                 self.on_agent_dead(agent_name, abandoned)
+
+        # Also release locks for unregistered agents whose lock has timed out.
+        # This handles the case where locked_by is a generic string like "agent"
+        # that is not tracked in the spawn registry.
+        released = self.task_store.release_stale_locks()
+        for task_id in released:
+            task = self.task_store.get(task_id)
+            if task and task.status == TaskStatus.in_progress:
+                self.task_store.update(task_id, status=TaskStatus.pending)
 
 
 def _task_summary(task: TaskItem) -> dict:
