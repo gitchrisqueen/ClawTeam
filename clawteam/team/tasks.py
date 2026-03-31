@@ -17,7 +17,7 @@ from clawteam.team.models import TaskItem, TaskStatus, get_data_dir
 # callers) cannot be resolved via the spawn registry.  If such a lock is older than
 # this threshold it is considered stale and will be released automatically.
 STALE_LOCK_TIMEOUT_SECONDS: int = int(
-    os.environ.get("CLAWTEAM_STALE_LOCK_TIMEOUT", 1800)  # 30 minutes default
+    os.environ.get("CLAWTEAM_STALE_LOCK_TIMEOUT", 14400)  # 4 hours default
 )
 
 
