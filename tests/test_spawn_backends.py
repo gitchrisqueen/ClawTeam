@@ -107,7 +107,12 @@ def test_tmux_backend_exports_spawn_path_for_agent_commands(monkeypatch, tmp_pat
 
     new_session = next(call for call in run_calls if call[:3] == ["tmux", "new-session", "-d"])
     full_cmd = new_session[-1]
-    assert f"export PATH={clawteam_bin.parent}:/usr/bin:/bin" in full_cmd
+    # build_spawn_path prepends: clawteam-bin-dir : npm-global/bin : original-PATH
+    # Verify clawteam bin dir is first and npm-global/bin is also present.
+    npm_global_bin = str(__import__("pathlib").Path.home() / ".npm-global" / "bin")
+    assert f"export PATH={clawteam_bin.parent}:{npm_global_bin}:/usr/bin:/bin" in full_cmd, (
+        f"Expected PATH to start with clawteam bin then npm-global/bin.\nGot: {full_cmd}"
+    )
     assert f"export CLAWTEAM_BIN={clawteam_bin}" in full_cmd
     assert f"{clawteam_bin} lifecycle on-exit --team demo-team --agent worker1" in full_cmd
 
