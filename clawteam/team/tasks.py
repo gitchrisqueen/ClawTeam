@@ -18,7 +18,7 @@ try:
         sys.path.insert(0, _cqc_scripts)
     from cqc_posthog import ph, SYSTEM, set_context_tags
     _POSTHOG_AVAILABLE = True
-except ImportError:
+except (ImportError, RuntimeError):
     _POSTHOG_AVAILABLE = False
     class _NoopPH:
         def capture(self, *a, **kw): pass
