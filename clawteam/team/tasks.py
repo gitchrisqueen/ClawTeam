@@ -5,11 +5,30 @@ from __future__ import annotations
 import fcntl
 import json
 import os
+import sys
 import tempfile
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+try:
+    _cqc_scripts = '/home/quin/scripts'
+    if _cqc_scripts not in sys.path:
+        sys.path.insert(0, _cqc_scripts)
+    from cqc_posthog import ph, SYSTEM, set_context_tags
+    _POSTHOG_AVAILABLE = True
+except (ImportError, RuntimeError):
+    _POSTHOG_AVAILABLE = False
+    class _NoopPH:
+        def capture(self, *a, **kw): pass
+        def capture_exception(self, *a, **kw): pass
+        def flush(self, *a, **kw): pass
+        def new_context(self): return __import__('contextlib').nullcontext()
+        def identify_context(self, *a): pass
+    ph = _NoopPH()
+    SYSTEM = 'system:cqc'
+    def set_context_tags(tags: dict) -> None: pass
 
 from clawteam.team.models import TaskItem, TaskStatus, get_data_dir
 
@@ -17,7 +36,7 @@ from clawteam.team.models import TaskItem, TaskStatus, get_data_dir
 # callers) cannot be resolved via the spawn registry.  If such a lock is older than
 # this threshold it is considered stale and will be released automatically.
 STALE_LOCK_TIMEOUT_SECONDS: int = int(
-    os.environ.get("CLAWTEAM_STALE_LOCK_TIMEOUT", 1800)  # 30 minutes default
+    os.environ.get("CLAWTEAM_STALE_LOCK_TIMEOUT", 14400)  # 4 hours default
 )
 
 
@@ -126,57 +145,60 @@ class TaskStore:
         caller: str = "",
         force: bool = False,
     ) -> TaskItem | None:
-        with self._write_lock():
-            task = self._get_unlocked(task_id)
-            if not task:
-                return None
+        with ph.new_context():
+            ph.identify_context("system:cqc")
+            set_context_tags({"component": "clawteam", "task_id": task_id or "unknown"})
+            with self._write_lock():
+                task = self._get_unlocked(task_id)
+                if not task:
+                    return None
 
-            # Lock logic when transitioning to in_progress
-            if status == TaskStatus.in_progress:
-                self._acquire_lock(task, caller, force)
-                # Record when work actually started
-                if not task.started_at:
-                    task.started_at = _now_iso()
+                # Lock logic when transitioning to in_progress
+                if status == TaskStatus.in_progress:
+                    self._acquire_lock(task, caller, force)
+                    # Record when work actually started
+                    if not task.started_at:
+                        task.started_at = _now_iso()
 
-            # Clear lock when transitioning to completed or pending
-            if status in (TaskStatus.completed, TaskStatus.pending):
-                task.locked_by = ""
-                task.locked_at = ""
+                # Clear lock when transitioning to completed or pending
+                if status in (TaskStatus.completed, TaskStatus.pending):
+                    task.locked_by = ""
+                    task.locked_at = ""
 
-            # Compute duration when completing a task that has a start time
-            if status == TaskStatus.completed and task.started_at:
-                try:
-                    start = datetime.fromisoformat(task.started_at)
-                    duration_secs = (datetime.now(timezone.utc) - start).total_seconds()
-                    task.metadata["duration_seconds"] = round(duration_secs, 2)
-                except (ValueError, TypeError):
-                    pass  # malformed timestamp, skip
+                # Compute duration when completing a task that has a start time
+                if status == TaskStatus.completed and task.started_at:
+                    try:
+                        start = datetime.fromisoformat(task.started_at)
+                        duration_secs = (datetime.now(timezone.utc) - start).total_seconds()
+                        task.metadata["duration_seconds"] = round(duration_secs, 2)
+                    except (ValueError, TypeError):
+                        pass  # malformed timestamp, skip
 
-            if status is not None:
-                task.status = status
-            if owner is not None:
-                task.owner = owner
-            if subject is not None:
-                task.subject = subject
-            if description is not None:
-                task.description = description
-            if add_blocks:
-                for b in add_blocks:
-                    if b not in task.blocks:
-                        task.blocks.append(b)
-            if add_blocked_by:
-                for b in add_blocked_by:
-                    if b not in task.blocked_by:
-                        task.blocked_by.append(b)
-            if metadata:
-                task.metadata.update(metadata)
-            task.updated_at = _now_iso()
+                if status is not None:
+                    task.status = status
+                if owner is not None:
+                    task.owner = owner
+                if subject is not None:
+                    task.subject = subject
+                if description is not None:
+                    task.description = description
+                if add_blocks:
+                    for b in add_blocks:
+                        if b not in task.blocks:
+                            task.blocks.append(b)
+                if add_blocked_by:
+                    for b in add_blocked_by:
+                        if b not in task.blocked_by:
+                            task.blocked_by.append(b)
+                if metadata:
+                    task.metadata.update(metadata)
+                task.updated_at = _now_iso()
 
-            if task.status == TaskStatus.completed:
-                self._resolve_dependents_unlocked(task_id)
+                if task.status == TaskStatus.completed:
+                    self._resolve_dependents_unlocked(task_id)
 
-            self._save_unlocked(task)
-            return task
+                self._save_unlocked(task)
+                return task
 
     def _acquire_lock(self, task: TaskItem, caller: str, force: bool) -> None:
         """Acquire lock on a task for the caller agent."""
