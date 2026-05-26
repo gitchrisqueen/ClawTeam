@@ -9,13 +9,23 @@ class TestClawTeamConfig:
         cfg = ClawTeamConfig()
         assert cfg.data_dir == ""
         assert cfg.user == ""
+        assert cfg.default_profile == ""
         assert cfg.default_backend == "tmux"
         assert cfg.skip_permissions is True
+        assert cfg.timezone == "UTC"
         assert cfg.workspace == "auto"
+        assert cfg.profiles == {}
+        assert cfg.presets == {}
 
     def test_custom_values(self):
-        cfg = ClawTeamConfig(user="alice", default_backend="subprocess", workspace="never")
+        cfg = ClawTeamConfig(
+            user="alice",
+            default_profile="gemini-main",
+            default_backend="subprocess",
+            workspace="never",
+        )
         assert cfg.user == "alice"
+        assert cfg.default_profile == "gemini-main"
         assert cfg.default_backend == "subprocess"
         assert cfg.workspace == "never"
 
@@ -78,10 +88,22 @@ class TestGetEffective:
         assert val == "tmux"
         assert source == "default"
 
+    def test_default_profile_env(self, monkeypatch):
+        monkeypatch.setenv("CLAWTEAM_DEFAULT_PROFILE", "gemini-main")
+        val, source = get_effective("default_profile")
+        assert val == "gemini-main"
+        assert source == "env"
+
     def test_data_dir_env(self, monkeypatch):
         monkeypatch.setenv("CLAWTEAM_DATA_DIR", "/custom/path")
         val, source = get_effective("data_dir")
         assert val == "/custom/path"
+        assert source == "env"
+
+    def test_timezone_env(self, monkeypatch):
+        monkeypatch.setenv("CLAWTEAM_TIMEZONE", "Asia/Shanghai")
+        val, source = get_effective("timezone")
+        assert val == "Asia/Shanghai"
         assert source == "env"
 
     def test_unknown_key_returns_empty(self):

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 
+from clawteam.paths import ensure_within_root, validate_identifier
 from clawteam.team.mailbox import MailboxManager
 from clawteam.team.models import MessageType, get_data_dir
 
@@ -77,9 +78,18 @@ class LifecycleManager:
             last_task=last_task or None,
             status=task_status or None,
         )
+        try:
+            from clawteam.events.global_bus import get_event_bus
+            from clawteam.events.types import AgentIdle
+            get_event_bus().emit_async(AgentIdle(
+                team_name=self.team_name, agent_name=agent_name, last_task=last_task,
+            ))
+        except Exception:
+            pass
 
     @staticmethod
     def cleanup_team(team_name: str) -> bool:
+        validate_identifier(team_name, "team name")
         # Best-effort cleanup of git workspaces
         try:
             from clawteam.workspace import get_workspace_manager
@@ -89,13 +99,20 @@ class LifecycleManager:
         except Exception:
             pass
 
-        team_dir = get_data_dir() / "teams" / team_name
-        tasks_dir = get_data_dir() / "tasks" / team_name
-        costs_dir = get_data_dir() / "costs" / team_name
-        sessions_dir = get_data_dir() / "sessions" / team_name
+        team_dir = ensure_within_root(get_data_dir() / "teams", team_name)
+        tasks_dir = ensure_within_root(get_data_dir() / "tasks", team_name)
+        costs_dir = ensure_within_root(get_data_dir() / "costs", team_name)
+        sessions_dir = ensure_within_root(get_data_dir() / "sessions", team_name)
         cleaned = False
         for d in (team_dir, tasks_dir, costs_dir, sessions_dir):
             if d.exists():
                 shutil.rmtree(d)
                 cleaned = True
+        if cleaned:
+            try:
+                from clawteam.events.global_bus import get_event_bus
+                from clawteam.events.types import TeamShutdown
+                get_event_bus().emit_async(TeamShutdown(team_name=team_name))
+            except Exception:
+                pass
         return cleaned

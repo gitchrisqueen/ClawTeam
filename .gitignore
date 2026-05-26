@@ -11,3 +11,4 @@ build/
 venv/
 uv.lock
 .claude/*.local.md
+node_modules/

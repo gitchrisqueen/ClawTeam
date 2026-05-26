@@ -20,7 +20,9 @@ class SpawnBackend(ABC):
         env: dict[str, str] | None = None,
         cwd: str | None = None,
         skip_permissions: bool = False,
-        openclaw_agent: str | None = None,
+        system_prompt: str | None = None,
+        is_leader: bool = False,
+        keepalive: bool = False,
     ) -> str:
         """Spawn a new agent process. Returns a status message."""
 
