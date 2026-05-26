@@ -213,7 +213,7 @@ class TestTierOverrides:
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd ~/Projects/ClawTeam-OpenClaw && python -m pytest tests/test_model_resolution.py -v`
+Run: `cd /home/quin/ClawTeam-OpenClaw && python -m pytest tests/test_model_resolution.py -v`
 Expected: ModuleNotFoundError — `clawteam.model_resolution` does not exist yet.
 
 - [ ] **Step 3: Implement resolve_model()**
@@ -294,13 +294,13 @@ def resolve_model(
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd ~/Projects/ClawTeam-OpenClaw && python -m pytest tests/test_model_resolution.py -v`
+Run: `cd /home/quin/ClawTeam-OpenClaw && python -m pytest tests/test_model_resolution.py -v`
 Expected: All 14 tests PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd ~/Projects/ClawTeam-OpenClaw
+cd /home/quin/ClawTeam-OpenClaw
 git add clawteam/model_resolution.py tests/test_model_resolution.py
 git commit -m "feat: add resolve_model() with 7-level priority chain"
 ```
@@ -418,7 +418,7 @@ type = "leader"
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd ~/Projects/ClawTeam-OpenClaw && python -m pytest tests/test_templates.py::TestModelFields tests/test_templates.py::TestParseTomlWithModel -v`
+Run: `cd /home/quin/ClawTeam-OpenClaw && python -m pytest tests/test_templates.py::TestModelFields tests/test_templates.py::TestParseTomlWithModel -v`
 Expected: FAIL — `AgentDef` has no `model` attribute, `TemplateDef` has no `model_strategy`.
 
 - [ ] **Step 3: Add model fields to AgentDef and TemplateDef**
@@ -493,13 +493,13 @@ Edit `clawteam/templates/__init__.py` `_parse_toml()` (lines 92-100). The `Agent
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd ~/Projects/ClawTeam-OpenClaw && python -m pytest tests/test_templates.py -v`
+Run: `cd /home/quin/ClawTeam-OpenClaw && python -m pytest tests/test_templates.py -v`
 Expected: All tests PASS (existing + new).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd ~/Projects/ClawTeam-OpenClaw
+cd /home/quin/ClawTeam-OpenClaw
 git add clawteam/templates/__init__.py tests/test_templates.py
 git commit -m "feat: add model and model_tier fields to template schema"
 ```
@@ -580,7 +580,7 @@ class TestAgentIdentityModel:
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd ~/Projects/ClawTeam-OpenClaw && python -m pytest tests/test_models.py::TestTeamMember::test_model_name_default tests/test_identity_model.py -v`
+Run: `cd /home/quin/ClawTeam-OpenClaw && python -m pytest tests/test_models.py::TestTeamMember::test_model_name_default tests/test_identity_model.py -v`
 Expected: FAIL — `model_name` not a field on TeamMember, `model` not a field on AgentIdentity.
 
 - [ ] **Step 3: Add model_name to TeamMember**
@@ -613,13 +613,13 @@ Update `to_env()` (after line 73) — add:
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd ~/Projects/ClawTeam-OpenClaw && python -m pytest tests/test_models.py tests/test_identity_model.py -v`
+Run: `cd /home/quin/ClawTeam-OpenClaw && python -m pytest tests/test_models.py tests/test_identity_model.py -v`
 Expected: All PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd ~/Projects/ClawTeam-OpenClaw
+cd /home/quin/ClawTeam-OpenClaw
 git add clawteam/team/models.py clawteam/identity.py tests/test_models.py tests/test_identity_model.py
 git commit -m "feat: add model field to TeamMember and AgentIdentity"
 ```
@@ -673,7 +673,7 @@ Add to `tests/test_config.py`:
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd ~/Projects/ClawTeam-OpenClaw && python -m pytest tests/test_config.py::TestClawTeamConfig::test_default_model_empty tests/test_config.py::TestGetEffective::test_default_model_from_env -v`
+Run: `cd /home/quin/ClawTeam-OpenClaw && python -m pytest tests/test_config.py::TestClawTeamConfig::test_default_model_empty tests/test_config.py::TestGetEffective::test_default_model_from_env -v`
 Expected: FAIL — `default_model` not a field.
 
 - [ ] **Step 3: Add fields to ClawTeamConfig**
@@ -695,13 +695,13 @@ Edit `clawteam/config.py` line 60, add after `"skip_permissions"` entry:
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd ~/Projects/ClawTeam-OpenClaw && python -m pytest tests/test_config.py -v`
+Run: `cd /home/quin/ClawTeam-OpenClaw && python -m pytest tests/test_config.py -v`
 Expected: All PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd ~/Projects/ClawTeam-OpenClaw
+cd /home/quin/ClawTeam-OpenClaw
 git add clawteam/config.py tests/test_config.py
 git commit -m "feat: add default_model and model_tiers to config"
 ```
@@ -873,7 +873,7 @@ def test_subprocess_backend_passes_model_to_openclaw(monkeypatch, tmp_path):
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd ~/Projects/ClawTeam-OpenClaw && python -m pytest tests/test_spawn_backends.py::test_tmux_backend_passes_model_to_openclaw tests/test_spawn_backends.py::test_subprocess_backend_passes_model_to_openclaw -v`
+Run: `cd /home/quin/ClawTeam-OpenClaw && python -m pytest tests/test_spawn_backends.py::test_tmux_backend_passes_model_to_openclaw tests/test_spawn_backends.py::test_subprocess_backend_passes_model_to_openclaw -v`
 Expected: TypeError — `spawn()` got unexpected keyword argument `model`.
 
 - [ ] **Step 3: Add model param to SpawnBackend base class**
@@ -933,13 +933,13 @@ Edit `clawteam/spawn/subprocess_backend.py`:
 
 - [ ] **Step 6: Run all spawn backend tests**
 
-Run: `cd ~/Projects/ClawTeam-OpenClaw && python -m pytest tests/test_spawn_backends.py -v`
+Run: `cd /home/quin/ClawTeam-OpenClaw && python -m pytest tests/test_spawn_backends.py -v`
 Expected: All PASS (existing + new).
 
 - [ ] **Step 7: Commit**
 
 ```bash
-cd ~/Projects/ClawTeam-OpenClaw
+cd /home/quin/ClawTeam-OpenClaw
 git add clawteam/spawn/base.py clawteam/spawn/tmux_backend.py clawteam/spawn/subprocess_backend.py tests/test_spawn_backends.py
 git commit -m "feat: add --model injection to spawn backends"
 ```
@@ -1016,18 +1016,18 @@ Also add a log warning when model is resolved but command may not support it:
 
 - [ ] **Step 5: Run existing CLI tests to verify no regression**
 
-Run: `cd ~/Projects/ClawTeam-OpenClaw && python -m pytest tests/test_spawn_cli.py -v`
+Run: `cd /home/quin/ClawTeam-OpenClaw && python -m pytest tests/test_spawn_cli.py -v`
 Expected: All existing tests PASS.
 
 - [ ] **Step 6: Run full test suite**
 
-Run: `cd ~/Projects/ClawTeam-OpenClaw && python -m pytest -v`
+Run: `cd /home/quin/ClawTeam-OpenClaw && python -m pytest -v`
 Expected: All tests PASS.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-cd ~/Projects/ClawTeam-OpenClaw
+cd /home/quin/ClawTeam-OpenClaw
 git add clawteam/cli/commands.py
 git commit -m "feat: add --model flag to spawn and launch CLI commands"
 ```
@@ -1064,13 +1064,13 @@ Do the same for all 4 templates.
 
 - [ ] **Step 3: Run template tests to verify no breakage**
 
-Run: `cd ~/Projects/ClawTeam-OpenClaw && python -m pytest tests/test_templates.py -v`
+Run: `cd /home/quin/ClawTeam-OpenClaw && python -m pytest tests/test_templates.py -v`
 Expected: All PASS.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-cd ~/Projects/ClawTeam-OpenClaw
+cd /home/quin/ClawTeam-OpenClaw
 git add clawteam/templates/*.toml
 git commit -m "feat: add model_strategy=auto to all built-in templates"
 ```
@@ -1084,22 +1084,22 @@ git commit -m "feat: add model_strategy=auto to all built-in templates"
 
 - [ ] **Step 1: Run the full test suite**
 
-Run: `cd ~/Projects/ClawTeam-OpenClaw && python -m pytest -v`
+Run: `cd /home/quin/ClawTeam-OpenClaw && python -m pytest -v`
 Expected: All tests PASS.
 
 - [ ] **Step 2: Verify backward compatibility — existing templates parse without model fields**
 
-Run: `cd ~/Projects/ClawTeam-OpenClaw && python -c "from clawteam.templates import load_template; t = load_template('hedge-fund'); print(f'OK: {t.name}, model={t.model}, strategy={t.model_strategy}')"`
+Run: `cd /home/quin/ClawTeam-OpenClaw && python -c "from clawteam.templates import load_template; t = load_template('hedge-fund'); print(f'OK: {t.name}, model={t.model}, strategy={t.model_strategy}')"`
 Expected: Prints template name with model_strategy=auto (from Task 7).
 
 - [ ] **Step 3: Verify resolve_model returns None when nothing set**
 
-Run: `cd ~/Projects/ClawTeam-OpenClaw && python -c "from clawteam.model_resolution import resolve_model; r = resolve_model(None,None,None,None,None,'','general-purpose'); print(f'Result: {r}'); assert r is None"`
+Run: `cd /home/quin/ClawTeam-OpenClaw && python -c "from clawteam.model_resolution import resolve_model; r = resolve_model(None,None,None,None,None,'','general-purpose'); print(f'Result: {r}'); assert r is None"`
 Expected: `Result: None`
 
 - [ ] **Step 4: Verify CLI help shows --model flag**
 
-Run: `cd ~/Projects/ClawTeam-OpenClaw && python -m clawteam spawn --help | grep -A1 model`
+Run: `cd /home/quin/ClawTeam-OpenClaw && python -m clawteam spawn --help | grep -A1 model`
 Expected: Shows `--model` / `-m` option with help text.
 
 - [ ] **Step 5: Commit any remaining fixes**
@@ -1107,7 +1107,7 @@ Expected: Shows `--model` / `-m` option with help text.
 If any test failures were found and fixed, commit them:
 
 ```bash
-cd ~/Projects/ClawTeam-OpenClaw
+cd /home/quin/ClawTeam-OpenClaw
 git add -A
 git commit -m "fix: address integration test findings"
 ```
@@ -1115,6 +1115,6 @@ git commit -m "fix: address integration test findings"
 - [ ] **Step 6: Final commit — tag the feature**
 
 ```bash
-cd ~/Projects/ClawTeam-OpenClaw
+cd /home/quin/ClawTeam-OpenClaw
 git log --oneline -8  # verify all commits look correct
 ```

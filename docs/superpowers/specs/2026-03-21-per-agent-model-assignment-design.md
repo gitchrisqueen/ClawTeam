@@ -2,7 +2,7 @@
 
 **Date:** 2026-03-21
 **Status:** Draft
-**Issue:** https://github.com/win4r/ClawTeam-OpenClaw/issues/1
+**Issue:** https://github.com/gitchrisqueen/ClawTeam/issues/1
 
 ## Problem
 
